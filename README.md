@@ -1,56 +1,73 @@
-Correcting gaze by warping-based convolutional neural network.
+# Correcting Gaze Using a Warping-Based Convolutional Neural Network
 
-# System usage
-```python
+https://github.com/user-attachments/assets/8063acfe-7d8c-4ac1-a557-21bd94f6d6b4
+
+## System Usage
+To run the system, execute the following command:
+```bash
 python regz_socket_MP_FD.py
 ```
 
-# Parameters need to be personalized in the "config.py"
-The positions of all parameters are illustrated in the following figure. P_o is the original point (0,0,0) which is defined at the center of the screen. <br />
-<br />
-Parameters "P_c_x", "P_c_y", "P_c_z", "S_W", "S_H", and "f" need to be personalized before using the system. <br /> 
-"P_c_x", "P_c_y", and "P_c_z": relative distance between the camera position and screen center (cm) <br />
-"S_W" and "S_H": screen size (cm) <br />
-"f": focal length of camera <br />
-<br />
+## Parameter Configuration
+The parameters must be personalized in the `config.py` file before using the system. Their positions are illustrated in the following figure. The original point `P_o (0,0,0)` is defined at the center of the screen.
 
-# Calibrating the focal length of the camera by the attached tools
-Execute the script "focal_length_calibration.ipynb" or "focal_length_calibration.py" to estimated the focal length (f), and the value will be shown at the top-left corner of the window. <br />
-Steps for calibration:<br />
-Step 1, please place your head in front of the camera about 50 cm (you can change this value in the code) <br />
-Step 2, please insert your interpupillary distance (the distance between two eyes) in the code or use the average value, 6.3 cm <br />
-<br />
+### Parameters to be personalized:
+- `P_c_x`, `P_c_y`, `P_c_z`: Relative distance between the camera position and screen center (cm)
+- `S_W`, `S_H`: Screen width and height (cm)
+- `f`: Focal length of the camera
 
-# Starting to correct gaze! (Self-demo)
-Push 'r' key when focusing the "local" window and gaze your head on the "remote" window to start gaze correction. <br />
-Push 'q' key when focusing the "local" window to leave the program. <br />
-<br />
-*The video will delay at beginning because the TCP socket transmission, nevertheless, the video will be on time after few seconds. <br />
-<br />
+## Camera Focal Length Calibration
+To estimate the focal length (`f`), execute one of the following scripts:
+```bash
+python focal_length_calibration.py
+```
+or open the Jupyter Notebook:
+```bash
+jupyter notebook focal_length_calibration.ipynb
+```
 
-# For online video communication
-The codes at the local and remote sides are the same. However, parameters "tar_ip", "sender_port", and "recver_port" need to be defined at both sides. <br />
-"tar_ip": the other user's IP address <br />
-"sender_port": port # for sending the redirected gaze video to the other user <br />
-"sender_port": port # for getting the redirected gaze video from the other user <br />
+### Steps for Calibration:
+1. Position your head approximately 50 cm in front of the camera (modifiable in the code).
+2. Insert your interpupillary distance (distance between the eyes) in the code, or use the average value of **6.3 cm**.
+3. The estimated focal length will be displayed in the top-left corner of the window.
 
-# IP setup for self-demo
-The codes at the local and remote sides are the same. However, parameters "tar_ip", "sender_port", and "recver_port" need to be defined at both sides. <br />
-"tar_ip": 127.0.0.1 <br />
-"sender_port": 5005 <br />
-"sender_port": 5005 <br />
+## Running Gaze Correction (Self-Demo)
+- Press **'r'** while focusing on the "local" window and gaze at the "remote" window to start gaze correction.
+- Press **'q'** while focusing on the "local" window to exit the program.
 
-# Environmental setup
-Python 3.5.3 <br />
-Tensorflow 1.8.0 <br />
-Cuda V9.0.176 and corresponding cuDnn <br />
+**Note:** The video may experience an initial delay due to TCP socket transmission, but will synchronize after a few seconds.
 
-# Required packages
-Dlib 18.17.100 <br />
-OpenCV 3.4.1 <br />
-Numpy 1.15.4 + mkl <br />
-pypiwin32 <br />
-scipy 0.19.1 <br />
+## Online Video Communication
+Both local and remote systems use the same code, but the following parameters must be configured:
+- `tar_ip`: The IP address of the other user
+- `sender_port`: Port number for sending the redirected gaze video
+- `recver_port`: Port number for receiving the redirected gaze video
 
-# DIRL Gaze Dataset
-37 Asian volunteers participated in our dataset collection. About 100 gaze directions are collected in range +40 to -40 degrees in horizontal and +30 to -30 degrees in vertical, in which 63 and 37 images are fixed and random direction, respectively. The images with closed eyes were removed.
+## IP Setup for Self-Demo
+For a self-demo, configure the following parameters:
+- `tar_ip`: `127.0.0.1`
+- `sender_port`: `5005`
+- `recver_port`: `5005`
+
+## Environmental Setup
+Ensure your environment meets the following requirements:
+- **Python**: 3.5.3
+- **TensorFlow**: 1.8.0
+- **CUDA**: V9.0.176 and corresponding cuDNN
+
+## Required Packages
+Install the following dependencies before running the system:
+- Dlib 18.17.100
+- OpenCV 3.4.1
+- Numpy 1.15.4 + MKL
+- pypiwin32
+- Scipy 0.19.1
+
+## DIRL Gaze Dataset
+The dataset consists of gaze data collected from **37 Asian volunteers**:
+- Approximately **100 gaze directions** per participant
+- Horizontal range: **+40 to -40 degrees**
+- Vertical range: **+30 to -30 degrees**
+- **63 fixed** gaze directions, **37 random** gaze directions
+- Images with closed eyes were removed
+
