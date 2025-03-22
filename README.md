@@ -67,6 +67,9 @@ Install the following dependencies before running the system:
 The dataset consists of gaze data collected from **37 Asian volunteers**:
 - Approximately **100 gaze directions** per participant
 - Horizontal range: **+40 to -40 degrees**
+
+## Author
+- Daichi Toyoda
 - Vertical range: **+30 to -30 degrees**
 - **63 fixed** gaze directions, **37 random** gaze directions
 - Images with closed eyes were removed
