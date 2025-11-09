@@ -14,18 +14,72 @@ import socket
 import struct
 import numpy as np
 import tensorflow as tf
-from win32api import GetSystemMetrics
-import win32gui
+import platform
+
+# Platform-specific imports for window management
+if platform.system() == 'Windows':
+    try:
+        from win32api import GetSystemMetrics
+        import win32gui
+        WINDOWS_AVAILABLE = True
+    except ImportError:
+        print("Warning: pywin32 not available. Some window management features will be limited.")
+        WINDOWS_AVAILABLE = False
+else:
+    WINDOWS_AVAILABLE = False
 
 from threading import Thread, Lock
 import multiprocessing as mp
 from config import get_config
 import pickle
 import math
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('gaze_correction.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 # In[ ]:
 
+
+def get_screen_resolution():
+    """Get screen resolution in a cross-platform way."""
+    if WINDOWS_AVAILABLE:
+        return (GetSystemMetrics(0), GetSystemMetrics(1))
+    else:
+        # Fallback: try to get from OpenCV or use common default
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+            root.destroy()
+            return (screen_width, screen_height)
+        except:
+            # Default fallback resolution
+            logger.warning("Could not detect screen resolution. Using default 1920x1080")
+            return (1920, 1080)
+
+def find_window_rect(window_title):
+    """Find window rectangle in a cross-platform way."""
+    if WINDOWS_AVAILABLE:
+        try:
+            tar_win = win32gui.FindWindow(None, window_title)
+            return win32gui.GetWindowRect(tar_win)
+        except:
+            logger.warning(f"Could not find window '{window_title}'")
+            return None
+    else:
+        logger.warning("Window finding not supported on non-Windows platforms")
+        return None
 
 conf,_ = get_config()
 if conf.mod == 'flx':
@@ -42,7 +96,7 @@ depth = -50
 # for monitoring
 
 # environment parameter
-Rs = (GetSystemMetrics(0),GetSystemMetrics(1))
+Rs = get_screen_resolution()
 
 
 # In[ ]:
@@ -57,14 +111,26 @@ print(Rs)
 
 # video receiver
 class video_receiver:
+    """
+    Handles receiving video stream via socket and performs face detection.
+
+    This class sets up a socket server to receive video frames, detects faces
+    in the received frames, and shares the detected face position with other processes.
+
+    Args:
+        shared_v: Multiprocessing shared array for face position data
+        lock: Multiprocessing lock for thread-safe access to shared data
+    """
+
     def __init__(self,shared_v,lock):
+        """Initialize the video receiver and start listening for connections."""
         self.close = False
         self.video_recv = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        print('Socket created')
+        logger.info('Socket created')
         #         global remote_head_Center
         self.video_recv.bind(('',conf.recver_port))
         self.video_recv.listen(10)
-        print('Socket now listening')
+        logger.info(f'Socket now listening on port {conf.recver_port}')
         self.conn, self.addr=self.video_recv.accept()
         # face detection
         self.detector = dlib.get_frontal_face_detector()
@@ -127,10 +193,33 @@ class video_receiver:
 
 
 class gaze_redirection_system:
+    """
+    Main class for real-time gaze redirection system.
+
+    This class handles the complete pipeline for gaze redirection including:
+    - Face and landmark detection
+    - Eye region extraction
+    - Neural network-based gaze warping
+    - Socket-based video communication
+
+    Args:
+        shared_v: Multiprocessing shared array for position data
+        lock: Multiprocessing lock for thread-safe operations
+    """
+
     def __init__(self,shared_v,lock):
-        #Landmark identifier. Set the filename to whatever you named the downloaded file
+        """Initialize the gaze redirection system with models and detectors."""
+        # Landmark identifier. Set the filename to whatever you named the downloaded file
         self.detector = dlib.get_frontal_face_detector()
-        self.predictor = dlib.shape_predictor("./lm_feat/shape_predictor_68_face_landmarks.dat") 
+
+        landmark_path = "./lm_feat/shape_predictor_68_face_landmarks.dat"
+        try:
+            self.predictor = dlib.shape_predictor(landmark_path)
+            logger.info(f"Successfully loaded facial landmark predictor from {landmark_path}")
+        except RuntimeError as e:
+            logger.error(f"Could not load facial landmark predictor from {landmark_path}")
+            logger.error(f"Please download it from: http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2")
+            raise 
         self.size_df = (320,240)
         self.size_I = (48,64)
         # initial value
@@ -148,50 +237,68 @@ class gaze_redirection_system:
         self.encode_param=[int(cv2.IMWRITE_JPEG_QUALITY),90]
         
         # load model to gpu
-        print("Loading model of [L] eye to GPU")
-        with tf.Graph().as_default() as g:
-            # define placeholder for inputs to network
-            with tf.name_scope('inputs'):
-                self.LE_input_img = tf.placeholder(tf.float32, [None, conf.height, conf.width, conf.channel], name="input_img")
-                self.LE_input_fp = tf.placeholder(tf.float32, [None, conf.height, conf.width,conf.ef_dim], name="input_fp")
-                self.LE_input_ang = tf.placeholder(tf.float32, [None, conf.agl_dim], name="input_ang")
-                self.LE_phase_train = tf.placeholder(tf.bool, name='phase_train') # a bool for batch_normalization
+        logger.info("Loading model of [L] eye to GPU")
+        try:
+            with tf.Graph().as_default() as g:
+                # define placeholder for inputs to network
+                with tf.name_scope('inputs'):
+                    self.LE_input_img = tf.placeholder(tf.float32, [None, conf.height, conf.width, conf.channel], name="input_img")
+                    self.LE_input_fp = tf.placeholder(tf.float32, [None, conf.height, conf.width,conf.ef_dim], name="input_fp")
+                    self.LE_input_ang = tf.placeholder(tf.float32, [None, conf.agl_dim], name="input_ang")
+                    self.LE_phase_train = tf.placeholder(tf.bool, name='phase_train') # a bool for batch_normalization
 
-            self.LE_img_pred, _, _ = model.inference(self.LE_input_img, self.LE_input_fp, self.LE_input_ang, self.LE_phase_train, conf)
+                self.LE_img_pred, _, _ = model.inference(self.LE_input_img, self.LE_input_fp, self.LE_input_ang, self.LE_phase_train, conf)
 
-            # split modle here
-            self.L_sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,log_device_placement=False), graph = g)
-            # load model
-            saver = tf.train.Saver(tf.global_variables())
-            ckpt = tf.train.get_checkpoint_state(model_dir+'L/')
-            if ckpt and ckpt.model_checkpoint_path:
-                # Restores from checkpoint
-                saver.restore(self.L_sess, ckpt.model_checkpoint_path)
-            else:
-                print('No checkpoint file found')
+                # split modle here
+                self.L_sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,log_device_placement=False), graph = g)
+                # load model
+                saver = tf.train.Saver(tf.global_variables())
+                ckpt = tf.train.get_checkpoint_state(model_dir+'L/')
+                if ckpt and ckpt.model_checkpoint_path:
+                    # Restores from checkpoint
+                    saver.restore(self.L_sess, ckpt.model_checkpoint_path)
+                    logger.info(f"Successfully loaded left eye model from {ckpt.model_checkpoint_path}")
+                else:
+                    logger.error(f'No checkpoint file found in {model_dir}L/')
+                    raise FileNotFoundError(f"Model checkpoint not found in {model_dir}L/")
+        except Exception as e:
+            logger.error(f"Error loading left eye model: {e}")
+            if hasattr(self, 'L_sess'):
+                self.L_sess.close()
+            raise
 
-        print("Loading model of [R] eye to GPU")
-        with tf.Graph().as_default() as g2:
-            # define placeholder for inputs to network
-            with tf.name_scope('inputs'):
-                self.RE_input_img = tf.placeholder(tf.float32, [None, conf.height, conf.width, conf.channel], name="input_img")
-                self.RE_input_fp = tf.placeholder(tf.float32, [None, conf.height, conf.width,conf.ef_dim], name="input_fp")
-                self.RE_input_ang = tf.placeholder(tf.float32, [None, conf.agl_dim], name="input_ang")
-                self.RE_phase_train = tf.placeholder(tf.bool, name='phase_train') # a bool for batch_normalization
+        logger.info("Loading model of [R] eye to GPU")
+        try:
+            with tf.Graph().as_default() as g2:
+                # define placeholder for inputs to network
+                with tf.name_scope('inputs'):
+                    self.RE_input_img = tf.placeholder(tf.float32, [None, conf.height, conf.width, conf.channel], name="input_img")
+                    self.RE_input_fp = tf.placeholder(tf.float32, [None, conf.height, conf.width,conf.ef_dim], name="input_fp")
+                    self.RE_input_ang = tf.placeholder(tf.float32, [None, conf.agl_dim], name="input_ang")
+                    self.RE_phase_train = tf.placeholder(tf.bool, name='phase_train') # a bool for batch_normalization
 
-            self.RE_img_pred, _, _ = model.inference(self.RE_input_img, self.RE_input_fp, self.RE_input_ang, self.RE_phase_train, conf)
+                self.RE_img_pred, _, _ = model.inference(self.RE_input_img, self.RE_input_fp, self.RE_input_ang, self.RE_phase_train, conf)
 
-            # split modle here
-            self.R_sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,log_device_placement=False), graph = g2)
-            # load model
-            saver = tf.train.Saver(tf.global_variables())
-            ckpt = tf.train.get_checkpoint_state(model_dir+'R/')
-            if ckpt and ckpt.model_checkpoint_path:
-                # Restores from checkpoint
-                saver.restore(self.R_sess, ckpt.model_checkpoint_path)
-            else:
-                print('No checkpoint file found')
-               
+                # split modle here
+                self.R_sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,log_device_placement=False), graph = g2)
+                # load model
+                saver = tf.train.Saver(tf.global_variables())
+                ckpt = tf.train.get_checkpoint_state(model_dir+'R/')
+                if ckpt and ckpt.model_checkpoint_path:
+                    # Restores from checkpoint
+                    saver.restore(self.R_sess, ckpt.model_checkpoint_path)
+                    logger.info(f"Successfully loaded right eye model from {ckpt.model_checkpoint_path}")
+                else:
+                    logger.error(f'No checkpoint file found in {model_dir}R/')
+                    raise FileNotFoundError(f"Model checkpoint not found in {model_dir}R/")
+        except Exception as e:
+            logger.error(f"Error loading right eye model: {e}")
+            if hasattr(self, 'R_sess'):
+                self.R_sess.close()
+            if hasattr(self, 'L_sess'):
+                self.L_sess.close()
+            raise
+
         self.run(shared_v,lock)
         
     def monitor_para(self,frame,fig_alpha,fig_eye_pos,fig_R_w):
@@ -211,6 +318,18 @@ class gaze_redirection_system:
         return frame
         
     def get_inputs(self, frame, shape, pos = "L", size_I = [48,64]):
+        """
+        Extract eye region and anchor points for neural network input.
+
+        Args:
+            frame: Input video frame
+            shape: Detected facial landmarks (dlib shape object)
+            pos: Eye position, either "L" for left or "R" for right
+            size_I: Target size for the extracted eye region [height, width]
+
+        Returns:
+            tuple: (normalized_eye_image, anchor_map, eye_center, original_size, top_left_coord)
+        """
         if(pos == "R"):
             lc = 36
             rc = 39
@@ -220,7 +339,7 @@ class gaze_redirection_system:
             rc = 45
             FP_seq = [45,44,43,42,47,46]
         else:
-            print("Error: Wrong Eye")
+            logger.error("Error: Wrong Eye position specified. Use 'L' or 'R'")
 
         eye_cx = (shape.part(rc).x+shape.part(lc).x)*0.5
         eye_cy = (shape.part(rc).y+shape.part(lc).y)*0.5
@@ -254,14 +373,13 @@ class gaze_redirection_system:
        
     def shifting_angles_estimator(self, R_le, R_re,shared_v,lock):
         # get P_w
-        try:
-            tar_win = win32gui.FindWindow(None, "Remote")
-            #left, top, reight, bottom
-            Rw_lt = win32gui.GetWindowRect(tar_win)
+        Rw_lt = find_window_rect("Remote")
+        if Rw_lt is not None:
             size_window = (Rw_lt[2]-Rw_lt[0], Rw_lt[3]-Rw_lt[1])
-        except:
-            Rw_lt = [int(Rs[0])-int(size_window[0]/2),int(Rs[1])-int(size_window[1]/2)]
-            size_window = (659,528)
+        else:
+            # Default window size and position
+            size_window = (659, 528)
+            Rw_lt = [int(Rs[0])-int(size_window[0]/2), int(Rs[1])-int(size_window[1]/2)]
             print("Missing the window")
         # get pos head
         pos_remote_head = [int(size_window[0]/2),int(size_window[1]/2)]
@@ -270,8 +388,8 @@ class gaze_redirection_system:
             if ((shared_v[0] !=0) & (shared_v[1] !=0)):
                 pos_remote_head[0] = shared_v[0]
                 pos_remote_head[1] = shared_v[1]
-
-        except:
+        except (IndexError, TypeError) as e:
+            print(f"Warning: Could not read shared position values: {e}")
             pos_remote_head = (int(size_window[0]/2),int(size_window[1]/2))
             
         R_w = (Rw_lt[0]+pos_remote_head[0], Rw_lt[1]+pos_remote_head[1])
