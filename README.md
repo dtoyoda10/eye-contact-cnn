@@ -212,14 +212,6 @@ When contributing:
 
 This project is provided as-is for research and educational purposes.
 
-## Citation
-
-If you use this code in your research, please cite:
-
-```
-[Add your citation information here]
-```
-
 ## Acknowledgments
 
 - dlib library for facial landmark detection
@@ -229,11 +221,3 @@ If you use this code in your research, please cite:
 ## Contact
 
 For questions or issues, please open an issue on GitHub or contact the maintainers.
-
-## References
-
-- [Add relevant papers or resources here]
-
----
-
-Last updated: 2025-11-09
