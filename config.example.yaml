@@ -1,0 +1,58 @@
+# Eye Contact CNN Configuration Example
+# Copy this file to config.yaml and adjust values as needed
+
+# Model parameters
+model:
+  height: 48                    # Input image height
+  width: 64                     # Input image width
+  channel: 3                    # Number of color channels
+  ef_dim: 12                    # Eye feature dimension
+  agl_dim: 2                    # Angle dimension
+  encoded_agl_dim: 16           # Encoded angle dimension
+  architecture: "flx"           # Model architecture (flx or deepwarp)
+
+# Network settings
+network:
+  target_ip: "localhost"        # Target IP address for socket communication
+  sender_port: 5005             # Port for sending video data
+  receiver_port: 5005           # Port for receiving video data
+  user_id: "local"              # User identifier
+
+# Camera calibration parameters
+camera:
+  focal_length: 650             # Camera focal length in pixels
+  ipd: 6.3                      # Inter-pupillary distance parameter
+  position:
+    x: 0                        # Camera position X coordinate
+    y: -21                      # Camera position Y coordinate
+    z: -1                       # Camera position Z coordinate
+
+# Screen parameters
+screen:
+  width: 62                     # Screen width in cm
+  height: 35                    # Screen height in cm
+
+# Paths
+paths:
+  model_dir: "./weights/warping_model/"     # Directory containing model weights
+  landmark_predictor: "./lm_feat/shape_predictor_68_face_landmarks.dat"  # Path to dlib landmark file
+  log_file: "gaze_correction.log"           # Log file path
+
+# Video settings
+video:
+  resolution:
+    width: 640                  # Video capture width
+    height: 480                 # Video capture height
+  jpeg_quality: 90              # JPEG compression quality (0-100)
+  camera_index: 0               # Camera device index
+
+# Performance options
+performance:
+  record_time: false            # Record processing time metrics
+  gpu_memory_fraction: 0.8      # Fraction of GPU memory to use
+
+# Logging
+logging:
+  level: "INFO"                 # Logging level (DEBUG, INFO, WARNING, ERROR)
+  console_output: true          # Enable console output
+  file_output: true             # Enable file output
