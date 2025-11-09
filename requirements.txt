@@ -1,0 +1,35 @@
+# Core dependencies for eye-contact-cnn
+
+# Deep Learning Framework
+# Note: This project uses TensorFlow 1.x APIs
+# For TensorFlow 2.x compatibility, migration would be required
+tensorflow>=1.14.0,<2.0.0
+
+# Computer Vision
+opencv-python>=4.2.0
+dlib>=19.19.0
+
+# Numerical Computing
+numpy>=1.16.0,<1.20.0
+
+# Networking (built-in)
+# socket, struct - part of Python standard library
+
+# Concurrency (built-in)
+# threading, multiprocessing - part of Python standard library
+
+# Platform-specific dependencies
+# Windows only - for window management features
+pywin32>=228; platform_system=="Windows"
+
+# Optional dependencies for cross-platform screen detection
+# Uncomment if needed for non-Windows platforms
+# python-xlib>=0.27; platform_system=="Linux"
+# pyobjc-framework-Quartz>=6.2; platform_system=="Darwin"
+
+# Development dependencies (optional)
+# Uncomment for development
+# pytest>=6.0.0
+# black>=20.8b1
+# flake8>=3.8.0
+# mypy>=0.800
